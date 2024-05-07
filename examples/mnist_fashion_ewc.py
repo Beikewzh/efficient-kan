@@ -3,15 +3,13 @@ import torch.nn as nn
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Dataset
-from torchvision.datasets import MNIST
 from tqdm import tqdm
-import numpy as np
+from efficient_kan import KAN  # Make sure this import is correct
+torch.manual_seed(0)
 
-# Assuming KAN is correctly imported and initialized
-from efficient_kan import KAN
-
+# Model definition
 class MLP(nn.Module):
-    def __init__(self, classes = 10):
+    def __init__(self, classes=10):
         super(MLP, self).__init__()
         self.layers = nn.Sequential(
             nn.Linear(28*28, 512),
@@ -24,11 +22,6 @@ class MLP(nn.Module):
     def forward(self, x):
         return self.layers(x)
 
-# Setting up the device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#########################################
-#########################################
-#########################################
 
 class FashionMNISTAdjusted(Dataset):
     def __init__(self, root, train, download, transform):
@@ -120,18 +113,46 @@ print("Unique labels in train loader:", sorted(set(train_labels)))
 print("Unique labels in validation loader:", sorted(set(val_labels)))
 # Model initialization
 
-#model = KAN([28 * 28, 64, 20]).to(device)
-model = MLP(classes=20).to(device)
 
-# Optimizer and loss function
-optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+# Model, optimizer, and criterion setup
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = KAN([28 * 28, 16, 20])
+#model = MLP(classes=20).to(device)
+optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)
 scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.8)
-
 criterion = nn.CrossEntropyLoss()
 
+# Compute Fisher Information Matrix
+def compute_fisher(model, dataloader, device):
+    fisher_info = {}
+    model.eval()
+    for name, param in model.named_parameters():
+        fisher_info[name] = torch.zeros_like(param.data)
+    
+    # Use the model's output as labels to compute log likelihood
+    for images, labels in dataloader:
+        images = images.view(-1, 28 * 28).to(device)
+        outputs = model(images)
+        labels = outputs.max(1)[1]  # Use the model's predictions as labels
+        model.zero_grad()
+        outputs = torch.nn.functional.log_softmax(outputs, dim=1)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        
+        for name, param in model.named_parameters():
+            fisher_info[name] += param.grad.data ** 2 / len(dataloader.dataset)
+    
+    return fisher_info
 
-# Training loop
-def train_task(task_num, epochs=10, train_loader = mnist_trainloader, test_loader = mnist_valloader):
+# EWC Loss
+def ewc_loss(model, fisher, opt_params, lambda_ewc):
+    loss = 0
+    for name, param in model.named_parameters():
+        loss += (fisher[name] * (opt_params[name] - param).pow(2)).sum()    
+    return lambda_ewc * loss
+
+def train_task(task_num, epochs=10, train_loader = mnist_trainloader, test_loader = mnist_valloader, optimizer = optimizer
+               , fisher=None, opt_params=None, lambda_ewc=0):
     
     for epoch in range(epochs):  # Train each task for 5 epochs
         model.train()
@@ -141,6 +162,8 @@ def train_task(task_num, epochs=10, train_loader = mnist_trainloader, test_loade
             optimizer.zero_grad()
             outputs = model(images)
             loss = criterion(outputs, labels)
+            if fisher and opt_params:
+                loss += ewc_loss(model, fisher, opt_params, lambda_ewc)
             loss.backward()
             optimizer.step()
 
@@ -168,21 +191,20 @@ def train_task(task_num, epochs=10, train_loader = mnist_trainloader, test_loade
     print("--------------------------------task done--------------------------------")
 
 
-
-
-# Execute training for both tasks
-
+# Task 1: Train on MNIST
 print("Fashion dataset")
-train_task(1, epochs=5, train_loader = fashion_trainloader, test_loader = fashion_valloader)
-for param in model.parameters():
-    param.requires_grad = False
+train_task(1, epochs=10, train_loader = fashion_trainloader, test_loader = fashion_valloader, optimizer=optimizer)
+# Save optimal params and compute Fisher info after Task 1
+opt_params = {n: p.clone().detach() for n, p in model.named_parameters()}
+fisher = compute_fisher(model, mnist_valloader, device)
 
-for param in model.layers[-1].parameters():
-    param.requires_grad = True
-optimizer = optim.AdamW(model.parameters(), lr=6e-5, weight_decay=2e-6)
+# Task 2: Train on Fashion-MNIST with EWC
+lambda_ewc = 2500  # Regularization strength for EWC
+optimizer = optim.AdamW(model.parameters(), lr=1e-5, weight_decay=1e-6)
 scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.8)
 print("Mnist dataset")
-train_task(2, epochs=5, train_loader = mnist_trainloader, test_loader = mnist_valloader)
+train_task(2, epochs=10, train_loader = mnist_trainloader, test_loader = mnist_valloader, optimizer=optimizer, 
+           fisher=fisher, opt_params=opt_params, lambda_ewc=lambda_ewc)
 
 
 model.eval()
