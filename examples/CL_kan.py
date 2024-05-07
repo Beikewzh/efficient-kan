@@ -76,6 +76,19 @@ def split_mnist(task_num):
 model = KAN([28 * 28, 64, 10]).to(device)
 #model = MLP(classes=10).to(device)
 
+for idx, layer in enumerate(model.layers):
+    print(f"Layer {idx}: {layer.__class__.__name__}")
+    for name, param in layer.named_parameters():
+        print(f"  {name} shape: {param.shape}")
+
+# Specifically print details about the last layer
+last_layer = model.layers[-1]
+print("\nDetails of the Last Layer:")
+print(last_layer)
+for name, param in last_layer.named_parameters():
+    print(f"  {name} shape: {param.shape}")
+
+
 # Optimizer and loss function
 optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
 criterion = nn.CrossEntropyLoss()
@@ -125,8 +138,14 @@ def train_task(task_num, epochs=5):
 
 # Execute training for both tasks
 train_task(1, epochs=5)
+for param in model.parameters():
+    param.requires_grad = False
+
+for param in model.layers[-1].parameters():
+    param.requires_grad = True
 optimizer = optim.AdamW(model.parameters(), lr=6e-5, weight_decay=2e-6)
 scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.8)
+
 train_task(2, epochs=5)
 
 

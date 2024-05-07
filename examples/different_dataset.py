@@ -174,6 +174,11 @@ def train_task(task_num, epochs=10, train_loader = mnist_trainloader, test_loade
 
 print("Fashion dataset")
 train_task(1, epochs=5, train_loader = fashion_trainloader, test_loader = fashion_valloader)
+for param in model.parameters():
+    param.requires_grad = False
+
+for param in model.layers[-1].parameters():
+    param.requires_grad = True
 optimizer = optim.AdamW(model.parameters(), lr=6e-5, weight_decay=2e-6)
 scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.8)
 print("Mnist dataset")
