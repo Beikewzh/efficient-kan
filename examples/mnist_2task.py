@@ -180,8 +180,8 @@ opt_params = {n: p.clone().detach() for n, p in model.named_parameters()}
 fisher = compute_fisher(model, test_dataset_1, device)
 
 # Task 2: Train on Fashion-MNIST with EWC
-lambda_ewc = 500  # Regularization strength for EWC
-optimizer = optim.AdamW(model.parameters(), lr=1e-5, weight_decay=1e-6)
+lambda_ewc = 10000  # Regularization strength for EWC
+optimizer = optim.AdamW(model.parameters(), lr=2e-5, weight_decay=2e-6)
 scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.8)
 
 train_dataset_2, test_dataset_2 = split_mnist(2)

@@ -116,7 +116,7 @@ print("Unique labels in validation loader:", sorted(set(val_labels)))
 
 # Model, optimizer, and criterion setup
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = KAN([28 * 28, 16, 20])
+model = KAN([28 * 28, 64, 20])
 #model = MLP(classes=20).to(device)
 optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)
 scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.8)
@@ -199,13 +199,13 @@ opt_params = {n: p.clone().detach() for n, p in model.named_parameters()}
 fisher = compute_fisher(model, mnist_valloader, device)
 
 # Task 2: Train on Fashion-MNIST with EWC
-lambda_ewc = 2500  # Regularization strength for EWC
-optimizer = optim.AdamW(model.parameters(), lr=1e-5, weight_decay=1e-6)
+lambda_ewc = 1000  # Regularization strength for EWC
+optimizer = optim.AdamW(model.parameters(), lr=2e-5, weight_decay=2e-6)
 scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.8)
 print("Mnist dataset")
 train_task(2, epochs=10, train_loader = mnist_trainloader, test_loader = mnist_valloader, optimizer=optimizer, 
            fisher=fisher, opt_params=opt_params, lambda_ewc=lambda_ewc)
-
+#train_task(2, epochs=10, train_loader = mnist_trainloader, test_loader = mnist_valloader, optimizer=optimizer,fisher=None, opt_params=None, lambda_ewc=0)
 
 model.eval()
 total_accuracy = 0
